@@ -10,7 +10,7 @@
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 // In the grader's container MAKEFUN_OUTPUT_DIR is unset and /output is used.
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
@@ -29,7 +29,38 @@ const DOSSIER_CAPS = {
   game_path_max_bytes: 1000,
 };
 
+function validatePreflight() {
+  const indexPath = join(repoRoot, 'game', 'index.html');
+  if (!existsSync(indexPath)) {
+    throw new Error(`pre-flight check failed: game/index.html is missing (${indexPath})`);
+  }
+  if (!statSync(indexPath).isFile()) {
+    throw new Error(`pre-flight check failed: game/index.html is not a regular file (${indexPath})`);
+  }
+  const shotsDir = join(repoRoot, 'screenshots');
+  if (!existsSync(shotsDir)) {
+    throw new Error(`pre-flight check failed: screenshots/ directory is missing (${shotsDir})`);
+  }
+  const images = readdirSync(shotsDir)
+    .filter((name) => /\.(jpe?g|png)$/i.test(name))
+    .sort();
+  if (images.length < 3 || images.length > 4) {
+    throw new Error(
+      `pre-flight check failed: screenshots/ holds ${images.length} image file(s), expected 3-4`,
+    );
+  }
+  for (const name of images) {
+    const size = statSync(join(shotsDir, name)).size;
+    if (size > DOSSIER_CAPS.screenshots.max_bytes) {
+      throw new Error(
+        `pre-flight check failed: screenshot ${name} is ${size} bytes, over the 256 KiB limit`,
+      );
+    }
+  }
+}
+
 function handIn() {
+  validatePreflight();
   mkdirSync(outputDir, { recursive: true });
   cpSync(join(repoRoot, 'game'), join(outputDir, 'game'), { recursive: true });
   mkdirSync(join(outputDir, 'screenshots'), { recursive: true });
